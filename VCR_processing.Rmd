@@ -1,0 +1,322 @@
+---
+title: "VCR processing"
+output: html_document
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.align='center')
+library(dplyr)
+library(leaflet)
+library(ggplot2)
+library(sf)
+library(ggmap)
+library(rgdal)
+library(raster)
+library(stringr)
+library(lubridate)
+library(kableExtra)
+
+new_map <- F
+
+crs <- "+init=epsg:4326"
+```
+## Study Area
+
+```{r study_area, echo = FALSE}
+
+if (new_map){
+  #Bounding box
+  xmin = -75.8
+  xmax = -75.6
+  ymin = 37.4
+  ymax = 37.5
+  base_map <- get_map(location = c(xmin, ymin, xmax, ymax), zoom = 12)
+} else {
+  load("base_map.Rdata")
+}
+
+
+
+ggmap(base_map) +
+  ylab("Latitude") +
+  xlab("Longitude") +
+  ggtitle("Virginia Coast Reserve LTER")
+```
+
+## Seagrass density
+
+**Title**: 	Density of Seagrass in Hog Island Bay and South Bay, VA 2007-2017
+
+**Citation**: McGlathery, K. 2017. Density of Seagrass in Hog Island Bay and South Bay, VA 2007-2017. Virginia Coast Reserve Long-Term Ecological Research Project Data Publication knb-lter-vcr.181.18 (doi:doi:10.6073/pasta/5a6ea442cf59cabb3112bb634a968ae5 ).
+
+**Abstract**: "This dataset contains measurements of seagrass shoot density in restored *Z. marina* meadows in the Virginia coastal bays. Measurements were made annually in June-July at plots in Hog Island Bay and South Bay, VA. GPS locations of sampling plots are available in the companion data set VCR11180."
+
+**Contacts**: kjm4k@virginia.edu
+
+**Notes**: In 2017, 12 new monitoring sites were added to the protocol: 6 in South Bay (SB) and 6 in Hog Island Bay (HI). These new plots are from areas of natural seagrass expansion, not from seeded plots. The variable "Age" is the years since seagrass first appeared in the new plots. The new plots were sampled using the protocol for 1 acre plots.
+
+```{r spatial, eval = FALSE, echo = FALSE}
+#Plot locations-------------------------------------------
+#bchl_spatial <- read.csv("data/BenthChl_spatial.csv") #The easting and northing locations here are incorrect
+
+# #Convert from easting-northing to lat-lon
+# bchl_spatial$id <- 1:nrow(bchl_spatial)
+# coords <- data.frame(east = bchl_spatial$EAST,
+#                      north = bchl_spatial$NORTH)
+# 
+# spdf <- SpatialPointsDataFrame(coords, data = bchl_spatial, proj4string = CRS("+init=epsg:27700")) #CRS is UK grid (east-north)
+# bchl_spatial_ll <- spTransform(spdf, CRS(crs))
+# 
+# data.frame(bchl_spatial_ll@coords)
+# 
+# bchl_spatial_ll <-st_as_sf(bchl_spatial_ll, coords = c("x","y"), crs = 28992) %>%
+#   st_transform(crs = 4326)
+# 
+# colnames(bchl_spatial_ll@coords)[colnames(bchl_spatial_ll@coords) == "EAST"] <- "lon"
+# colnames(bchl_spatial_ll@coords)[colnames(bchl_spatial_ll@coords) == "NORTH"] <- "lat"
+# bchl_spatial_ll <- as(bchl_spatial_ll, "sf")
+# 
+
+# 
+# ggmap(base_map) +
+#   ylab("Latitude") +
+#   xlab("Longitude") +
+#   ggtitle("Benthic Chlorophyll Sampling 2007-2017")+
+#   geom_sf(data = test)
+
+# #---------------------------------------------------------
+
+```
+
+
+```{r shoot_density, fig.width=10, fig.height=4}
+#Benthic chlorophyll
+sdens <- read.csv("data/ShootDens_2007-2017.csv")
+
+#Benthic chlorophyll at all sites------------------------------------------------------
+shoots <- sdens %>% group_by(PLOT, SAMPYR) %>%
+  dplyr::summarise(mean_dens = mean(SHOOTS)) %>%
+  mutate(Site = ifelse(str_detect(PLOT, "HI"),
+                       "HI", ifelse(str_detect(PLOT, "SB"),
+                                    "SB", "other")))
+
+one <- ggplot() +
+  geom_line(data = shoots, aes(x = SAMPYR, y = mean_dens, group = PLOT, color = Site)) +
+  geom_point(data = shoots, aes(x = SAMPYR, y = mean_dens, group = PLOT, color = Site)) +
+  scale_x_discrete(limits = seq(2008,2017,1))+
+  ylim(0,725)+
+  ylab("Mean Shoot Density") +
+  xlab("Year") +
+  theme_bw() +
+  ggtitle("All sites") + guides(fill=FALSE, color=FALSE)
+ 
+
+#------------------------------------------------------------------------------------
+
+#Annual shoot density at grouped sampling sites---------------------------------------
+annual_by_group <- shoots %>% group_by(Site, SAMPYR) %>%
+  dplyr::summarise(mean_dens = mean(mean_dens)) %>%
+  as.data.frame()
+
+annual_sdens <- shoots %>% group_by(SAMPYR) %>%
+  dplyr::summarise(mean_dens = mean(mean_dens))
+
+df <- data.frame(Site = "Region",
+                 SAMPYR = annual_sdens$SAMPYR,
+                 mean_dens = annual_sdens$mean_dens)
+
+annual_by_group <- rbind(annual_by_group,df)
+
+names(annual_by_group)[1] <- "Site grouping"
+
+two <- ggplot(annual_by_group) +
+  geom_line(aes(x = SAMPYR, y = mean_dens,  color = `Site grouping`)) +
+  geom_point(aes(x = SAMPYR, y = mean_dens, color = `Site grouping`)) +
+  scale_x_discrete(limits = seq(2008,2017,1))+
+  ylab("") +
+  ylim(0,725)+
+  xlab("Year") +
+  theme_bw() +
+  ggtitle("Area averaged") +
+  theme(legend.position = c(0.85, 0.8),legend.key = element_rect(color="transparent"),
+        legend.background = element_rect(fill="transparent")) 
+
+#------------------------------------------------------------------------------------
+cowplot::plot_grid(one,two, align = "hv", nrow = 1)
+
+```
+
+## Benthic Chlorophyll
+
+**Title**: 	Benthic Chlorophyll of Seagrass Sediment in Hog Island Bay and South Bay, VA 2008-2017
+
+**Citation**: McGlathery, K. 2017. Benthic Chlorophyll of Seagrass Sediment in Hog Island Bay and South Bay, VA 2008-2017. Virginia Coast Reserve Long-Term Ecological Research Project Data Publication knb-lter-vcr.182.19 (doi:doi:10.6073/pasta/60a228352daa61d85bc7a1b37f0ec5a4 ).
+
+**Abstract**: "This data set contains measurements of benthic chlorophyll content in surface sediments in restored *Z. marina* plots in the Virginia coastal bays. Samples were collected annually during June-July at restored seagrass plots and adjacent bare sediment plots. GPS locations of sampling plots are available in the companion data set VCR11180."
+
+**Contacts**: kjm4k@virginia.edu
+
+**Notes**: In 2017, 12 new monitoring sites were added to the protocol: 6 in South Bay (SB) and 6 in Hog Island Bay (HI). These new plots are from areas of natural seagrass expansion, not from seeded plots. The variable "Age" is the years since seagrass first appeared in the new plots. The new plots were sampled using the protocol for 1 acre plots.
+
+```{r benthic_chlorophyll, fig.width=10, fig.height=4}
+
+bchl <- read.csv("data/BenthChl_2007-2017.csv")
+
+#Benthic chlorophyll at all sites------------------------------------------------------
+chl <- bchl %>% group_by(PLOT, SAMPYR) %>%
+  dplyr::summarise(mean_chl = mean(BEN_CHL)) %>%
+  mutate(Site = ifelse(str_detect(PLOT, "HI"),
+                       "HI", ifelse(str_detect(PLOT, "SB"),
+                                    "SB", "other")))
+
+one <- ggplot() +
+  geom_line(data = chl, aes(x = SAMPYR, y = mean_chl, group = PLOT, color = Site)) +
+  geom_point(data = chl, aes(x = SAMPYR, y = mean_chl, group = PLOT, color = Site)) +
+  scale_x_discrete(limits = seq(2008,2017,1))+
+  ylab("Mean Benthic Chlorophyll") +
+  xlab("Year") +
+  theme_bw() +
+  ggtitle("All sites") + guides(fill=FALSE, color=FALSE)
+ 
+
+#------------------------------------------------------------------------------------
+
+#Annual benthic chl at grouped sampling sites---------------------------------------
+annual_by_group <- chl %>% group_by(Site, SAMPYR) %>%
+  dplyr::summarise(mean_chl = mean(mean_chl)) %>%
+  as.data.frame()
+
+annual_chl <- chl %>% group_by(SAMPYR) %>%
+  dplyr::summarise(mean_chl = mean(mean_chl))
+
+df <- data.frame(Site = "Region",
+                 SAMPYR = annual_chl$SAMPYR,
+                 mean_chl = annual_chl$mean_chl)
+
+annual_by_group <- rbind(annual_by_group,df)
+
+names(annual_by_group)[1] <- "Site grouping"
+
+two <- ggplot(annual_by_group) +
+  geom_line(aes(x = SAMPYR, y = mean_chl,  color = `Site grouping`)) +
+  geom_point(aes(x = SAMPYR, y = mean_chl, color = `Site grouping`)) +
+  scale_x_discrete(limits = seq(2008,2017,1))+
+  ylab("") +
+  xlab("Year") +
+  theme_bw() +
+  ggtitle("Area averaged") +
+  theme(legend.position = c(0.75, 0.8),legend.key = element_rect(color="transparent"),
+        legend.background = element_rect(fill="transparent"))
+
+#------------------------------------------------------------------------------------
+cowplot::plot_grid(one,two, align = "h", nrow = 1)
+
+```
+
+
+## Water Quality
+
+**Title**: 	Hourly Meteorological Data for the Virginia Coast Reserve LTER 1989-present
+
+**Citation**: 	Porter, J., D. Krovetz, W. Nuttle and J. Spitler. 2018. Hourly Meteorological Data for the Virginia Coast Reserve LTER 1989-present. Virginia Coast Reserve Long-Term Ecological Research Project Data Publication knb-lter-vcr.25.37 (doi:doi:10.6073/pasta/c87febba463a3ac63a64bdb484a197ce ).
+
+**Abstract**: "Data from VCR/LTER meteorological stations is listed in comma-separated-value (CSV) files by year. A combined file for all years is also available, sorted by station, date and time, however, unlike the annual files, this combined file is too large for most spreadsheets to handle. A compressed copy of all the .CSV files is included in a single .ZIP file for users who wish to conveniently download a copy of all the data."
+
+**Contacts**: jhp7e@virginia.edu
+
+**Notes**: Water quality data from four sampling sites:
+
+
+```{r water_quality_sites, echo = FALSE, fig.height=15}
+
+stations <-data.frame(ID = c("HOGMET","OYSMET","OYSMET0","PHCKMET"),
+                      Station = c("Hog Island meteorological Station",
+                       "Oyster Meteorological Station",
+                       "Old Location for Oyster Met. Station (1989-1995)",
+                       "Phillips Creek Meteorological Station"))
+kable(stations, format = "markdown", align = c("c","c"))
+```
+
+```{r water_quality, warning=FALSE}
+load("data/met_hourly_1989-2018.Rdata")
+# wq <- read.csv("data/met_hourly_1989-2018.csv", stringsAsFactors = F)
+# 
+# wq$YEAR<-as.Date(wq$YEAR, format = "%Y")
+# wq <- wq %>% mutate(year = year(YEAR), AVG_T = as.numeric(AVG_T), AVG_RH = as.numeric(AVG_RH),
+#                     AVG_WS = as.numeric(AVG_WS), SOIL_T = as.numeric(SOIL_T)) 
+# 
+# save(wq, file = "data/met_hourly_1989-2018.Rdata")
+
+
+avg <- wq %>% group_by(year) %>%
+  mutate(PAR = ifelse(as.numeric(PAR) < 0,NA,as.numeric(PAR))) %>%
+  dplyr::summarise(Temperature = mean(AVG_T, na.rm = T),
+                    `Relative Humidity` = mean(AVG_RH, na.rm = T),
+                    `Wind Speed` = mean(AVG_WS, na.rm = T),
+                   `Wind Angle` = mean(as.numeric(AVG_WANG), na.rm = T),
+                    `Soil Temperature` = mean(SOIL_T, na.rm = T),
+                   Precipitation = mean(as.numeric(PPT), na.rm = T),
+                  `Solar Radiation` = mean(as.numeric(RS), na.rm = T),
+                  `PAR` = mean(as.numeric(PAR), na.rm = T)) %>%
+  filter(`Wind Speed` < 100) %>%
+  dplyr::rename(Year = year)
+
+
+```
+
+```{r water_qual_figs, warning=FALSE, fig.height=10, echo = FALSE}
+one <- ggplot(avg) + 
+  geom_line(aes(x = Year, y = Temperature)) +
+  geom_point(aes(x = Year, y = Temperature)) +
+  ylab(expression(paste("Temperature (",degree,"C)"))) +
+  ggtitle("")+
+  theme_bw()
+
+two <- ggplot(avg) + 
+  geom_line(aes(x = Year, y = `Relative Humidity`)) +
+  geom_point(aes(x = Year, y = `Relative Humidity`)) +
+  ylab(expression(paste("Relative Humidity (%)"))) +
+  theme_bw()
+
+three <- ggplot(avg) + 
+  geom_line(aes(x = Year, y = `Wind Speed`)) +
+  geom_point(aes(x = Year, y = `Wind Speed`)) +
+  ylab(expression(paste("Wind Speed (m/s)"))) +
+  theme_bw()
+
+four <- ggplot(avg) + 
+  geom_line(aes(x = Year, y = `Wind Angle`)) +
+  geom_point(aes(x = Year, y = `Wind Angle`)) +
+  ylab(expression(paste("Wind Angle (",degree,")"))) +
+  theme_bw()
+
+five <- ggplot(avg) + 
+  geom_line(aes(x = Year, y = `Soil Temperature`)) +
+  geom_point(aes(x = Year, y = `Soil Temperature`)) +
+  ylab(expression(paste("Soil Temperature (",degree,"C)"))) +
+  theme_bw()
+
+six <- ggplot(avg) + 
+  geom_line(aes(x = Year, y = Precipitation)) +
+  geom_point(aes(x = Year, y = Precipitation)) +
+  ylab(expression(paste("Precipitation (mm)"))) +
+  theme_bw()
+
+seven <- ggplot(avg) + 
+  geom_line(aes(x = Year, y = `Solar Radiation`)) +
+  geom_point(aes(x = Year, y = `Solar Radiation`)) +
+  ylab(expression(paste("Solar Radiation (kJ m"^"-2",")"))) +
+  theme_bw()
+
+eight <- ggplot(avg) + 
+  geom_line(aes(x = Year, y = PAR)) +
+  geom_point(aes(x = Year, y = PAR)) +
+  ylab(expression("PAR (Mmole m"^-2*"Hr"^-1*")")) +
+  theme_bw()
+
+
+cowplot::plot_grid(one, two, three, four,
+                   five,six,seven,eight, align = "hv", ncol = 2)
+
+```
+
