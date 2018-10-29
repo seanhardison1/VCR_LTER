@@ -1,5 +1,6 @@
 ---
-title: "VCR processing"
+title: "Exploratory Data Analyses: VCR LTER"
+author: Sean Hardison
 output: html_document
 ---
 
@@ -15,10 +16,12 @@ library(raster)
 library(stringr)
 library(lubridate)
 library(kableExtra)
+library(here)
 
 new_map <- F
 
 crs <- "+init=epsg:4326"
+data.dir <- here::here("data")
 ```
 ## Study Area
 
@@ -32,7 +35,7 @@ if (new_map){
   ymax = 37.5
   base_map <- get_map(location = c(xmin, ymin, xmax, ymax), zoom = 12)
 } else {
-  load("base_map.Rdata")
+  load(file.path(data.dir,"base_map.Rdata"))
 }
 
 
@@ -53,7 +56,8 @@ ggmap(base_map) +
 
 **Contacts**: kjm4k@virginia.edu
 
-**Notes**: In 2017, 12 new monitoring sites were added to the protocol: 6 in South Bay (SB) and 6 in Hog Island Bay (HI). These new plots are from areas of natural seagrass expansion, not from seeded plots. The variable "Age" is the years since seagrass first appeared in the new plots. The new plots were sampled using the protocol for 1 acre plots.
+**Notes**: "In 2017, 12 new monitoring sites were added to the protocol: 6 in South Bay (SB) and 6 in Hog Island Bay (HI). These new plots are from areas of natural seagrass expansion, not from seeded plots. The variable "Age" is the years since seagrass first appeared in the new plots. The new plots were sampled using the protocol for 1 acre plots."
+
 
 ```{r spatial, eval = FALSE, echo = FALSE}
 #Plot locations-------------------------------------------
@@ -89,50 +93,59 @@ ggmap(base_map) +
 ```
 
 
-```{r shoot_density, fig.width=10, fig.height=4}
-#Benthic chlorophyll
-sdens <- read.csv("data/ShootDens_2007-2017.csv")
+```{r shoot_density}
+#Shoot density
+sdens <- read.csv(file.path(data.dir,"ShootDens_2007-2017.csv"))
 
-#Benthic chlorophyll at all sites------------------------------------------------------
+#Across all sites
 shoots <- sdens %>% group_by(PLOT, SAMPYR) %>%
   dplyr::summarise(mean_dens = mean(SHOOTS)) %>%
-  mutate(Site = ifelse(str_detect(PLOT, "HI"),
-                       "HI", ifelse(str_detect(PLOT, "SB"),
-                                    "SB", "other")))
+  mutate(Location = ifelse(str_detect(PLOT, "HI"),
+                       "Hog Island", ifelse(str_detect(PLOT, "SB"),
+                                    "South Bay", "other"))) %>% 
+  mutate(Location = factor(Location, levels = c("Hog Island","South Bay")))
+
+#Annual density at grouped sampling sites
+annual_by_group <- shoots %>% group_by(Location, SAMPYR) %>%
+  dplyr::summarise(mean_dens = mean(mean_dens)) %>%
+  as.data.frame()
+
+#Area averaged
+annual_sdens <- shoots %>% group_by(SAMPYR) %>%
+  dplyr::summarise(mean_dens = mean(mean_dens)) %>% 
+  dplyr::mutate(Location = "Area averaged")
+
+#Bind all
+annual_by_group <- rbind(annual_by_group,annual_sdens) %>% 
+ mutate(Location = factor(Location, levels = c("Hog Island","South Bay","Area averaged")))
+
+
+```
+
+```{r shoots_plotting, echo = FALSE,fig.width=10, fig.height=4}
+
+pal <- setNames(c('purple', 'orange'), levels(shoots$Location))
+
 
 one <- ggplot() +
-  geom_line(data = shoots, aes(x = SAMPYR, y = mean_dens, group = PLOT, color = Site)) +
-  geom_point(data = shoots, aes(x = SAMPYR, y = mean_dens, group = PLOT, color = Site)) +
+  geom_line(data = shoots, aes(x = SAMPYR, y = mean_dens, group = PLOT, color = Location)) +
+  geom_point(data = shoots, aes(x = SAMPYR, y = mean_dens, group = PLOT, color = Location)) +
   scale_x_discrete(limits = seq(2008,2017,1))+
+  scale_color_manual(values = pal)+
   ylim(0,725)+
   ylab("Mean Shoot Density") +
   xlab("Year") +
   theme_bw() +
-  ggtitle("All sites") + guides(fill=FALSE, color=FALSE)
- 
+  ggtitle("All sites") +
+  guides(colour=FALSE)
 
-#------------------------------------------------------------------------------------
-
-#Annual shoot density at grouped sampling sites---------------------------------------
-annual_by_group <- shoots %>% group_by(Site, SAMPYR) %>%
-  dplyr::summarise(mean_dens = mean(mean_dens)) %>%
-  as.data.frame()
-
-annual_sdens <- shoots %>% group_by(SAMPYR) %>%
-  dplyr::summarise(mean_dens = mean(mean_dens))
-
-df <- data.frame(Site = "Region",
-                 SAMPYR = annual_sdens$SAMPYR,
-                 mean_dens = annual_sdens$mean_dens)
-
-annual_by_group <- rbind(annual_by_group,df)
-
-names(annual_by_group)[1] <- "Site grouping"
+pal <- setNames(c('purple', 'orange', 'indianred'), levels(annual_by_group$Location))
 
 two <- ggplot(annual_by_group) +
-  geom_line(aes(x = SAMPYR, y = mean_dens,  color = `Site grouping`)) +
-  geom_point(aes(x = SAMPYR, y = mean_dens, color = `Site grouping`)) +
+  geom_line(aes(x = SAMPYR, y = mean_dens,  color = Location), size = 1) +
+  geom_point(aes(x = SAMPYR, y = mean_dens, color = Location),size =1) +
   scale_x_discrete(limits = seq(2008,2017,1))+
+  scale_color_manual(values = pal)+
   ylab("") +
   ylim(0,725)+
   xlab("Year") +
@@ -146,6 +159,7 @@ cowplot::plot_grid(one,two, align = "hv", nrow = 1)
 
 ```
 
+
 ## Benthic Chlorophyll
 
 **Title**: 	Benthic Chlorophyll of Seagrass Sediment in Hog Island Bay and South Bay, VA 2008-2017
@@ -156,51 +170,58 @@ cowplot::plot_grid(one,two, align = "hv", nrow = 1)
 
 **Contacts**: kjm4k@virginia.edu
 
-**Notes**: In 2017, 12 new monitoring sites were added to the protocol: 6 in South Bay (SB) and 6 in Hog Island Bay (HI). These new plots are from areas of natural seagrass expansion, not from seeded plots. The variable "Age" is the years since seagrass first appeared in the new plots. The new plots were sampled using the protocol for 1 acre plots.
+**Notes**: "In 2017, 12 new monitoring sites were added to the protocol: 6 in South Bay (SB) and 6 in Hog Island Bay (HI). These new plots are from areas of natural seagrass expansion, not from seeded plots. The variable "Age" is the years since seagrass first appeared in the new plots. The new plots were sampled using the protocol for 1 acre plots."
 
-```{r benthic_chlorophyll, fig.width=10, fig.height=4}
+```{r benthic_chlorophyll}
+#Benthic chlorophyll
+bchl <- read.csv(file.path(data.dir,"BenthChl_2007-2017.csv"))
 
-bchl <- read.csv("data/BenthChl_2007-2017.csv")
-
-#Benthic chlorophyll at all sites------------------------------------------------------
+#Across all sites
 chl <- bchl %>% group_by(PLOT, SAMPYR) %>%
   dplyr::summarise(mean_chl = mean(BEN_CHL)) %>%
-  mutate(Site = ifelse(str_detect(PLOT, "HI"),
-                       "HI", ifelse(str_detect(PLOT, "SB"),
-                                    "SB", "other")))
+  mutate(Location = ifelse(str_detect(PLOT, "HI"),
+                      "Hog Island", ifelse(str_detect(PLOT, "SB"),
+                                    "South Bay", "other"))) %>% 
+  mutate(Location = factor(Location, levels = c("Hog Island","South Bay")))
 
-one <- ggplot() +
-  geom_line(data = chl, aes(x = SAMPYR, y = mean_chl, group = PLOT, color = Site)) +
-  geom_point(data = chl, aes(x = SAMPYR, y = mean_chl, group = PLOT, color = Site)) +
-  scale_x_discrete(limits = seq(2008,2017,1))+
-  ylab("Mean Benthic Chlorophyll") +
-  xlab("Year") +
-  theme_bw() +
-  ggtitle("All sites") + guides(fill=FALSE, color=FALSE)
- 
-
-#------------------------------------------------------------------------------------
-
-#Annual benthic chl at grouped sampling sites---------------------------------------
-annual_by_group <- chl %>% group_by(Site, SAMPYR) %>%
+#Annual chl at grouped sampling sites
+annual_by_group <- chl %>% group_by(Location, SAMPYR) %>%
   dplyr::summarise(mean_chl = mean(mean_chl)) %>%
   as.data.frame()
 
+#Area averaged
 annual_chl <- chl %>% group_by(SAMPYR) %>%
-  dplyr::summarise(mean_chl = mean(mean_chl))
+  dplyr::summarise(mean_chl = mean(mean_chl)) %>% 
+  dplyr::mutate(Location = "Area averaged")
 
-df <- data.frame(Site = "Region",
-                 SAMPYR = annual_chl$SAMPYR,
-                 mean_chl = annual_chl$mean_chl)
+#Bind all
+annual_by_group <- rbind(annual_by_group,annual_chl) %>% 
+ mutate(Location = factor(Location, levels = c("Hog Island","South Bay","Area averaged")))
 
-annual_by_group <- rbind(annual_by_group,df)
+```
 
-names(annual_by_group)[1] <- "Site grouping"
 
-two <- ggplot(annual_by_group) +
-  geom_line(aes(x = SAMPYR, y = mean_chl,  color = `Site grouping`)) +
-  geom_point(aes(x = SAMPYR, y = mean_chl, color = `Site grouping`)) +
+```{r bchl_plotting, echo = F, fig.width=10, fig.height=4}
+
+pal <- setNames(c('purple', 'orange'), levels(shoots$Location))
+
+one <- ggplot() +
+  geom_line(data = chl, aes(x = SAMPYR, y = mean_chl, group = PLOT, color = Location)) +
+  geom_point(data = chl, aes(x = SAMPYR, y = mean_chl, group = PLOT, color = Location)) +
   scale_x_discrete(limits = seq(2008,2017,1))+
+  scale_color_manual(values = pal)+
+  ylab("Mean Benthic Chlorophyll") +
+  xlab("Year") +
+  theme_bw() +
+  ggtitle("All sites") +
+  guides(fill=FALSE, color=FALSE)
+
+pal <- setNames(c('purple', 'orange', 'indianred'), levels(annual_by_group$Location))
+two <- ggplot(annual_by_group) +
+  geom_line(aes(x = SAMPYR, y = mean_chl,  color = Location),size =1) +
+  geom_point(aes(x = SAMPYR, y = mean_chl, color = Location),size =1) +
+  scale_x_discrete(limits = seq(2008,2017,1))+
+  scale_color_manual(values = pal)+
   ylab("") +
   xlab("Year") +
   theme_bw() +
@@ -210,7 +231,6 @@ two <- ggplot(annual_by_group) +
 
 #------------------------------------------------------------------------------------
 cowplot::plot_grid(one,two, align = "h", nrow = 1)
-
 ```
 
 
@@ -237,16 +257,10 @@ stations <-data.frame(ID = c("HOGMET","OYSMET","OYSMET0","PHCKMET"),
 kable(stations, format = "markdown", align = c("c","c"))
 ```
 
-```{r water_quality, warning=FALSE}
-load("data/met_hourly_1989-2018.Rdata")
-# wq <- read.csv("data/met_hourly_1989-2018.csv", stringsAsFactors = F)
-# 
-# wq$YEAR<-as.Date(wq$YEAR, format = "%Y")
-# wq <- wq %>% mutate(year = year(YEAR), AVG_T = as.numeric(AVG_T), AVG_RH = as.numeric(AVG_RH),
-#                     AVG_WS = as.numeric(AVG_WS), SOIL_T = as.numeric(SOIL_T)) 
-# 
-# save(wq, file = "data/met_hourly_1989-2018.Rdata")
+The time series figures below were produced by averaging across years and sites. Further work should identify which sites are contributing most heavily to trends. 
 
+```{r water_quality, warning=FALSE}
+load(file.path(data.dir,"met_hourly_1989-2018.Rdata"))
 
 avg <- wq %>% group_by(year) %>%
   mutate(PAR = ifelse(as.numeric(PAR) < 0,NA,as.numeric(PAR))) %>%
