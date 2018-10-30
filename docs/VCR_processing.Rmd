@@ -17,6 +17,7 @@ library(stringr)
 library(lubridate)
 library(kableExtra)
 library(here)
+library(RColorBrewer)
 
 new_map <- F
 
@@ -262,8 +263,9 @@ The time series figures below were produced by averaging across years and sites.
 ```{r water_quality, warning=FALSE}
 load(file.path(data.dir,"met_hourly_1989-2018.Rdata"))
 
-avg <- wq %>% group_by(year) %>%
+avg <- wq %>%
   mutate(PAR = ifelse(as.numeric(PAR) < 0,NA,as.numeric(PAR))) %>%
+   group_by(year, STATION) %>%
   dplyr::summarise(Temperature = mean(AVG_T, na.rm = T),
                     `Relative Humidity` = mean(AVG_RH, na.rm = T),
                     `Wind Speed` = mean(AVG_WS, na.rm = T),
@@ -273,64 +275,83 @@ avg <- wq %>% group_by(year) %>%
                   `Solar Radiation` = mean(as.numeric(RS), na.rm = T),
                   `PAR` = mean(as.numeric(PAR), na.rm = T)) %>%
   filter(`Wind Speed` < 100) %>%
-  dplyr::rename(Year = year)
+  dplyr::rename(Year = year) %>% 
+  mutate(STATION = factor(STATION, levels = c(unique(.$STATION))))
 
 
 ```
 
 ```{r water_qual_figs, warning=FALSE, fig.height=10, echo = FALSE}
+pal <- setNames(brewer.pal(6,"Paired"), levels(avg$STATION))
+
 one <- ggplot(avg) + 
-  geom_line(aes(x = Year, y = Temperature)) +
-  geom_point(aes(x = Year, y = Temperature)) +
+  geom_line(aes(x = Year, y = Temperature, color = STATION)) +
+  geom_point(aes(x = Year, y = Temperature, color = STATION)) +
   ylab(expression(paste("Temperature (",degree,"C)"))) +
+  scale_color_manual(values = pal)+
   ggtitle("")+
-  theme_bw()
+  theme_bw()+
+  guides(fill=FALSE, color=FALSE)
 
 two <- ggplot(avg) + 
-  geom_line(aes(x = Year, y = `Relative Humidity`)) +
-  geom_point(aes(x = Year, y = `Relative Humidity`)) +
+  geom_line(aes(x = Year, y = `Relative Humidity`, color = STATION)) +
+  geom_point(aes(x = Year, y = `Relative Humidity`, color = STATION)) +
   ylab(expression(paste("Relative Humidity (%)"))) +
-  theme_bw()
+  scale_color_manual(values = pal)+
+  theme_bw()+
+  guides(fill=FALSE, color=FALSE)
 
 three <- ggplot(avg) + 
-  geom_line(aes(x = Year, y = `Wind Speed`)) +
-  geom_point(aes(x = Year, y = `Wind Speed`)) +
+  geom_line(aes(x = Year, y = `Wind Speed`, color = STATION)) +
+  geom_point(aes(x = Year, y = `Wind Speed`, color = STATION)) +
   ylab(expression(paste("Wind Speed (m/s)"))) +
-  theme_bw()
+  scale_color_manual(values = pal)+
+  theme_bw()+
+  guides(fill=FALSE, color=FALSE)
 
 four <- ggplot(avg) + 
-  geom_line(aes(x = Year, y = `Wind Angle`)) +
-  geom_point(aes(x = Year, y = `Wind Angle`)) +
+  geom_line(aes(x = Year, y = `Wind Angle`, color = STATION)) +
+  geom_point(aes(x = Year, y = `Wind Angle`, color = STATION)) +
   ylab(expression(paste("Wind Angle (",degree,")"))) +
-  theme_bw()
+  scale_color_manual(values = pal)+
+  theme_bw()+
+  guides(fill=FALSE, color=FALSE)
 
 five <- ggplot(avg) + 
-  geom_line(aes(x = Year, y = `Soil Temperature`)) +
-  geom_point(aes(x = Year, y = `Soil Temperature`)) +
+  geom_line(aes(x = Year, y = `Soil Temperature`, color = STATION)) +
+  geom_point(aes(x = Year, y = `Soil Temperature`, color = STATION)) +
   ylab(expression(paste("Soil Temperature (",degree,"C)"))) +
-  theme_bw()
+  scale_color_manual(values = pal)+
+  theme_bw()+
+  guides(fill=FALSE, color=FALSE)
 
 six <- ggplot(avg) + 
-  geom_line(aes(x = Year, y = Precipitation)) +
-  geom_point(aes(x = Year, y = Precipitation)) +
+  geom_line(aes(x = Year, y = Precipitation, color = STATION)) +
+  geom_point(aes(x = Year, y = Precipitation, color = STATION)) +
   ylab(expression(paste("Precipitation (mm)"))) +
-  theme_bw()
+  scale_color_manual(values = pal)+
+  theme_bw()+
+  guides(fill=FALSE, color=FALSE)
 
 seven <- ggplot(avg) + 
-  geom_line(aes(x = Year, y = `Solar Radiation`)) +
-  geom_point(aes(x = Year, y = `Solar Radiation`)) +
+  geom_line(aes(x = Year, y = `Solar Radiation`, color = STATION)) +
+  geom_point(aes(x = Year, y = `Solar Radiation`, color = STATION)) +
   ylab(expression(paste("Solar Radiation (kJ m"^"-2",")"))) +
-  theme_bw()
+  scale_color_manual(values = pal)+
+  theme_bw()+
+  guides(fill=FALSE, color=FALSE)
 
 eight <- ggplot(avg) + 
-  geom_line(aes(x = Year, y = PAR)) +
-  geom_point(aes(x = Year, y = PAR)) +
+  geom_line(aes(x = Year, y = PAR, color = STATION)) +
+  geom_point(aes(x = Year, y = PAR, color = STATION)) +
   ylab(expression("PAR (Mmole m"^-2*"Hr"^-1*")")) +
-  theme_bw()
+  scale_color_manual(values = pal)+
+  theme_bw() +
+  theme(legend.position="none")
 
+legend <- cowplot::get_legend(eight + theme(legend.position="top"))
+gridExtra::grid.arrange(one, two, three, four, five, six, seven, eight, legend, ncol=2, nrow = 5, 
+             layout_matrix = rbind(c(1,2), c(3,4),c(5,6),c(7,8),c(9,9)),
+             widths = c(2.4, 2.4),heights = c(1.7,1.7,1.7,1.7,0.37))
 
-cowplot::plot_grid(one, two, three, four,
-                   five,six,seven,eight, align = "hv", ncol = 2)
-
-```
 
