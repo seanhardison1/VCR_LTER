@@ -47,7 +47,7 @@ ggmap(base_map) +
   ggtitle("Virginia Coast Reserve LTER")
 ```
 
-## Seagrass density
+## Seagrass density {.tabset .tabset-fade}
 
 **Title**: 	Density of Seagrass in Hog Island Bay and South Bay, VA 2007-2017
 
@@ -58,6 +58,7 @@ ggmap(base_map) +
 **Contacts**: kjm4k@virginia.edu
 
 **Notes**: "In 2017, 12 new monitoring sites were added to the protocol: 6 in South Bay (SB) and 6 in Hog Island Bay (HI). These new plots are from areas of natural seagrass expansion, not from seeded plots. The variable "Age" is the years since seagrass first appeared in the new plots. The new plots were sampled using the protocol for 1 acre plots."
+
 
 
 ```{r spatial, eval = FALSE, echo = FALSE}
@@ -93,6 +94,7 @@ ggmap(base_map) +
 
 ```
 
+### Processing 
 
 ```{r shoot_density}
 #Shoot density
@@ -122,6 +124,8 @@ annual_by_group <- rbind(annual_by_group,annual_sdens) %>%
 
 
 ```
+
+### Plotting
 
 ```{r shoots_plotting, echo = FALSE,fig.width=10, fig.height=4}
 
@@ -161,7 +165,7 @@ cowplot::plot_grid(one,two, align = "hv", nrow = 1)
 ```
 
 
-## Benthic Chlorophyll
+## Benthic Chlorophyll {.tabset .tabset-fade}
 
 **Title**: 	Benthic Chlorophyll of Seagrass Sediment in Hog Island Bay and South Bay, VA 2008-2017
 
@@ -172,6 +176,8 @@ cowplot::plot_grid(one,two, align = "hv", nrow = 1)
 **Contacts**: kjm4k@virginia.edu
 
 **Notes**: "In 2017, 12 new monitoring sites were added to the protocol: 6 in South Bay (SB) and 6 in Hog Island Bay (HI). These new plots are from areas of natural seagrass expansion, not from seeded plots. The variable "Age" is the years since seagrass first appeared in the new plots. The new plots were sampled using the protocol for 1 acre plots."
+
+### Processing
 
 ```{r benthic_chlorophyll}
 #Benthic chlorophyll
@@ -201,6 +207,7 @@ annual_by_group <- rbind(annual_by_group,annual_chl) %>%
 
 ```
 
+### Plotting
 
 ```{r bchl_plotting, echo = F, fig.width=10, fig.height=4}
 
@@ -235,7 +242,7 @@ cowplot::plot_grid(one,two, align = "h", nrow = 1)
 ```
 
 
-## Water Quality
+## Meteorology {.tabset .tabset-fade}
 
 **Title**: 	Hourly Meteorological Data for the Virginia Coast Reserve LTER 1989-present
 
@@ -245,10 +252,10 @@ cowplot::plot_grid(one,two, align = "h", nrow = 1)
 
 **Contacts**: jhp7e@virginia.edu
 
-**Notes**: Water quality data from four sampling sites:
+**Notes**: Meteorological data from four sampling sites:
 
 
-```{r water_quality_sites, echo = FALSE, fig.height=15}
+```{r Meteorology_sites, echo = FALSE, fig.height=15}
 
 stations <-data.frame(ID = c("HOGMET","OYSMET","OYSMET0","PHCKMET"),
                       Station = c("Hog Island meteorological Station",
@@ -258,9 +265,11 @@ stations <-data.frame(ID = c("HOGMET","OYSMET","OYSMET0","PHCKMET"),
 kable(stations, format = "markdown", align = c("c","c"))
 ```
 
-The time series figures below were produced by averaging across years and sites. Further work should identify which sites are contributing most heavily to trends. 
+The time series figures below were produced by averaging site data across years. 
 
-```{r water_quality, warning=FALSE}
+### Processing
+
+```{r Meteorology, warning=FALSE}
 load(file.path(data.dir,"met_hourly_1989-2018.Rdata"))
 
 avg <- wq %>%
@@ -280,6 +289,8 @@ avg <- wq %>%
 
 
 ```
+
+### Plotting
 
 ```{r water_qual_figs, warning=FALSE, fig.height=10, echo = FALSE}
 pal <- setNames(brewer.pal(6,"Paired"), levels(avg$STATION))
@@ -353,5 +364,38 @@ legend <- cowplot::get_legend(eight + theme(legend.position="top"))
 gridExtra::grid.arrange(one, two, three, four, five, six, seven, eight, legend, ncol=2, nrow = 5, 
              layout_matrix = rbind(c(1,2), c(3,4),c(5,6),c(7,8),c(9,9)),
              widths = c(2.4, 2.4),heights = c(1.7,1.7,1.7,1.7,0.37))
+```
 
+## Water Quality {.tabset .tabset-fade}
 
+**Title**: Water Quality Sampling - integrated measurements for the Virginia Coast, 1992-2018
+
+**Citation**: McGlathery, K. and R. Christian. 2018. Water Quality Sampling - integrated measurements for the Virginia Coast, 1992-2018. Virginia Coast Reserve Long-Term Ecological Research Project Data Publication knb-lter-vcr.247.10 (doi:doi:10.6073/pasta/b650b236f092e0fdee0d5d8ccf521cb3 ).
+
+**Abstract**: "This dataset contains information about the aquatic environment along two transects that run from inlet to the mainland shore on the southern part of the Delmarva Peninsula since 1992. It has a large number of columns (111) that integrate information on water column and benthic measurements. Frequency of sampling varies from monthly to quarterly, and not all variables are necessarily measured on the same dates. However, all the data from a given date and location appears on a single line of the dataset."
+
+**Contacts**: jhp7e@virginia.edu
+
+### Processing
+
+```{r water_quality}
+load(file = file.path(data.dir, "IntegratedWaterQual_1992-2018.Rdata"))
+
+d <- wq %>%
+  dplyr::select(station, measureDate,chlor_a, tss, nh3, po4, nox, no2, din, pom) %>%
+  mutate(Time = mdy(measureDate)) %>% 
+  mutate(Month = month(Time), Year = year(Time)) %>% 
+  filter(Month %in% c(6,7,8,9)) %>% 
+    group_by(Year) %>% 
+  dplyr::summarise(Chlorophyll = mean(chlor_a, na.rm = T),
+                   TSS = mean(tss, na.rm = T),
+                   NH3 = mean(nh3, na.rm = T),
+                   PO4 = mean(po4, na.rm = T),
+                   NOX = mean(nox, na.rm = T),
+                   DIN = mean(din, na.rm = T),
+                   POM = mean(pom, na.rm = T))
+
+# plot(d$Year, d$PO4, type = "b")
+# plot(d$Year, d$Chlorophyll, type = "b")
+
+```
