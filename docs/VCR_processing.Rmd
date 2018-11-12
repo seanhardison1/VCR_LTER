@@ -1,7 +1,11 @@
 ---
 title: "Exploratory Data Analyses: VCR LTER"
 author: Sean Hardison
-output: html_document
+output:
+  rmarkdown::html_document:
+    toc: true
+    toc_float: true
+    theme: lumen
 ---
 
 ```{r setup, include=FALSE, echo=FALSE}
@@ -24,6 +28,7 @@ new_map <- F
 crs <- "+init=epsg:4326"
 data.dir <- here::here("data")
 ```
+
 ## Study Area
 
 ```{r study_area, echo = FALSE}
@@ -125,7 +130,7 @@ annual_by_group <- rbind(annual_by_group,annual_sdens) %>%
 
 ```
 
-### Plotting
+### Visualization
 
 ```{r shoots_plotting, echo = FALSE,fig.width=10, fig.height=4}
 
@@ -207,7 +212,7 @@ annual_by_group <- rbind(annual_by_group,annual_chl) %>%
 
 ```
 
-### Plotting
+### Visualization
 
 ```{r bchl_plotting, echo = F, fig.width=10, fig.height=4}
 
@@ -376,6 +381,8 @@ gridExtra::grid.arrange(one, two, three, four, five, six, seven, eight, legend, 
 
 **Contacts**: jhp7e@virginia.edu
 
+**Notes**: An interpolation step was performed when missing values comprised < 10% of the length of the series. Interpolated values are shown in red in the figures below. 
+
 ### Processing
 
 ```{r water_quality}
@@ -392,10 +399,85 @@ d <- wq %>%
                    NH3 = mean(nh3, na.rm = T),
                    PO4 = mean(po4, na.rm = T),
                    NOX = mean(nox, na.rm = T),
-                   DIN = mean(din, na.rm = T),
-                   POM = mean(pom, na.rm = T))
+                   DIN = mean(din, na.rm = T)) %>% 
+  tidyr::gather(., Var, Value, Chlorophyll:DIN) %>% 
+  mutate(interp = NA)
 
-# plot(d$Year, d$PO4, type = "b")
-# plot(d$Year, d$Chlorophyll, type = "b")
+#Interpolate missing values if reasonable to do so
+dna <- NULL
+for (i in 1:length(unique(d$Var))){
+  
+  sub <- d[d$Var == unique(d$Var)[i],] #subset
+  missing <- which(is.na(sub$Value)) #Get index of missing values
+
+  if (1 - nrow(sub[is.na(sub$Value),])/nrow(sub) > .9){  #If 90% of observations are present, then interpolate
+    sub$Value <- approx(sub$Year, sub$Value, n  = nrow(sub))$y
+  }
+  
+  sub[missing,]$interp <- TRUE #mark interpolated data
+  
+  assign('dna',rbind(dna,sub)) 
+  
+}
+
+
+
 
 ```
+
+### Visualization
+
+```{r wq_plots, echo = F, message=FALSE, warning=FALSE, fig.width=10, fig.height = 5}
+
+tss <- ggplot() +
+    geom_line(data = dna[dna$Var == "TSS",], aes(x = Year, y = Value)) +
+    geom_point(data = dna[dna$Var == "TSS",],
+               aes(x = Year, y = Value, color = interp)) +
+  guides(color = FALSE)+
+  ylab("TSS") +
+  theme_bw()
+
+nh3 <- ggplot() +
+    geom_line(data = dna[dna$Var == "NH3",], aes(x = Year, y = Value)) +
+    geom_point(data = dna[dna$Var == "NH3",],
+               aes(x = Year, y = Value, color = interp)) +
+  guides(color = FALSE)+
+  ylab("NH3")+
+  theme_bw()
+
+po4 <- ggplot() +
+    geom_line(data = dna[dna$Var == "PO4",], aes(x = Year, y = Value)) +
+    geom_point(data = dna[dna$Var == "PO4",],
+               aes(x = Year, y = Value, color = interp)) +
+  guides(color = FALSE)+
+  ylab("PO4")+
+  theme_bw()
+
+nox <- ggplot() +
+    geom_line(data = dna[dna$Var == "NOX",], aes(x = Year, y = Value)) +
+    geom_point(data = dna[dna$Var == "NOX",],
+               aes(x = Year, y = Value, color = interp)) +
+  guides(color = FALSE)+
+  ylab("NOX") +
+  theme_bw()
+
+din <- ggplot() +
+    geom_line(data = dna[dna$Var == "DIN",], aes(x = Year, y = Value)) +
+    geom_point(data = dna[dna$Var == "DIN",],
+               aes(x = Year, y = Value, color = interp)) +
+  guides(color = FALSE)+
+  ylab("DIN") +
+  theme_bw()
+
+chl <- ggplot() +
+    geom_line(data = dna[dna$Var == "Chlorophyll",], aes(x = Year, y = Value)) +
+    geom_point(data = dna[dna$Var == "Chlorophyll",],
+               aes(x = Year, y = Value, color = interp)) +
+  guides(color = FALSE)+
+  ylab("Chlorophyll")+
+  theme_bw()
+
+cowplot::plot_grid(tss, nh3, po4, nox, din, chl, align = "hv")
+
+```
+
