@@ -22,12 +22,17 @@ library(lubridate)
 library(kableExtra)
 library(here)
 library(RColorBrewer)
+library(nlme)
 
 new_map <- F
 
 crs <- "+init=epsg:4326"
 data.dir <- here::here("data")
 ```
+
+##Introduction
+
+The purpose of this document is to familiarize myself with the types of data being collected as part of the [Virginia Coast Reserve Long-Term Ecological Research](https://www.vcrlter.virginia.edu/) program. 
 
 ## Study Area
 
@@ -52,7 +57,7 @@ ggmap(base_map) +
   ggtitle("Virginia Coast Reserve LTER")
 ```
 
-## Seagrass density {.tabset .tabset-fade}
+## Seagrass Density {.tabset .tabset-fade}
 
 **Title**: 	Density of Seagrass in Hog Island Bay and South Bay, VA 2007-2017
 
@@ -478,6 +483,142 @@ chl <- ggplot() +
   theme_bw()
 
 cowplot::plot_grid(tss, nh3, po4, nox, din, chl, align = "hv")
+
+```
+
+## Small Mammal Trapping {.tabset .tabset-fade}
+
+**Title**: Hog Island VA Small-Mammal Trapping, 1989-2016
+
+**Citation**:	Porter, J. and R. Dueser. 2016. Hog Island VA Small-Mammal Trapping 1989-2016. Virginia Coast Reserve Long-Term Ecological Research Project Data Publication knb-lter-vcr.49.34 (doi:doi:10.6073/pasta/a6745259025acbd2438f0a975f404978 ).
+
+**Abstract**: "This dataset contains information on long-term small mammal trapping on the Virginia Coast Reserve LTER.
+
+Four transects on Hog Island are included in the data, each of which was trapped at least twice each year, typically in the spring and autumn (note: Transect T2 was not trapped every year).
+
+Along each transect Sherman Live Traps were placed every 12.5 m along the transect, with an alternating offset of 2.5 m (to remove traps from the path running down the transect). This leaves a total inter-trap distance of 15 m.
+
+Traps were baited with peanut butter wrapped in waxed paper and were run sequentially for at least 3 nights in a row.
+
+Traps in areas that would experience tidal flooding were placed on styrofoam plastic platforms to provide flotation during high tides.
+
+Captured animals were individually tagged with numbered fingerling fish tags placed in the right ear, inspected for sex and sexual characteristics, weighed with a spring scale to the nearest gram and released at the point of capture."
+
+**Contacts**: jhp7e@virginia.edu
+
+**Notes**: 
+
+### Processing
+
+```{r small_mammals, message=FALSE, warning=FALSE}
+d <- read.csv(file.path(data.dir, "SmallMammalTrapping.csv"), stringsAsFactors = F) %>% 
+  mutate(SPECIES, SPECIES = plyr::mapvalues(SPECIES, from = c(1,2,3,4,5,6,7,8),
+                                            to = c("Cryptotis parva (least shrew)",
+                                                   "Mus musculus (house mouse)",
+                                                   "Microtus pennsylvanicus (meadow vole)",
+                                                   "Oryzomys palustris (rice rat)",
+                                                   "Peromyscus leucopus (white-footed mouse)",
+                                                   "Rattus norvegicus (Norway rat)",
+                                                   "Zapus hudsonius (meadow jumping mouse)",
+                                                   "Blarina brevicauda (short-tailed shrew)"))) %>% 
+  filter(SEASON == "Autumn ", SPECIES != 9, SPECIES != 0) %>% #select season and discard NAs. Summer has low temporal coverage (1989 and 1990 only)
+  mutate(YEAR = ifelse(YEAR %in% c(0:9), paste0(200,YEAR),
+                           ifelse(YEAR %in% c(10:16), paste0(20,YEAR), #Fix year column
+                                  paste0(19,YEAR)))) %>% 
+  tidyr::unite(., Time, c("DAY","MONTH","YEAR"), sep = "-") %>% 
+  mutate(Time = dmy(Time)) %>% #combine into date column and format
+  distinct(., TAG, .keep_all = TRUE) %>% #%>% #select all distinct individuals (no repeat offenders)
+  filter(TRAPDAY <= 3, SITE != "T2 ") #All sites had at least 3 trap days, so this is the minimum. Sampling at site T2 is not consistent with other sites, so is excluded here
+
+
+#Question: Have Autumn species abundances changed through time?
+
+#For plotting
+all_obs <- d %>% mutate(Year = year(Time)) %>%
+  dplyr::select(SPECIES, Year, SITE) %>%
+  group_by(SPECIES, Year, SITE) %>% 
+  dplyr::summarise(n = n()) %>% #count incidence of species
+  dplyr::rename(Species = SPECIES) %>%
+  dplyr::summarise(mean = mean(n),
+                   SE = sd(n)/sqrt(length(unique(SITE))),
+                   sum = sum(n)) %>% 
+  mutate(lower = mean - SE,
+         upper = mean + SE)
+
+#For a linear-mixed effects model
+lme_test <-  d %>% mutate(Year = year(Time)) %>%
+  dplyr::select(SPECIES, Year, SITE) %>%
+  group_by(SPECIES, Year, SITE) %>% 
+  dplyr::summarise(n = n()) %>% 
+  dplyr::rename(Species = SPECIES)
+
+lme_test$SITE <- str_replace(lme_test$SITE, " ", "")
+
+
+#Has the prevalence of the house mouse changed through time? ----------------------------------------
+mus_musculus <- lme_test %>% filter(Species == "Mus musculus (house mouse)") %>% 
+  ungroup() %>% 
+  mutate(Year, Year = plyr::mapvalues(Year, from = c(1991:2006,2008:2016),
+                                      c(1:16,18:26)))
+
+#Build models, specifying AR1 error strucure and SITE as a random effect
+mus_mod <- lme(n ~ Year, ~1|SITE, data = mus_musculus, correlation = corAR1())
+mus_null <- lme(n ~ 1, ~1|SITE, data = mus_musculus, correlation = corAR1())
+
+#Is the model considering time as a fixed effect any better than the null model? Yes (p ~ 1e-4)
+# anova(update(mus_mod, method = "ML"),
+#       update(mus_null, method = "ML"))
+
+m <- mean(coef(mus_mod)[,2])
+b <- mean(coef(mus_mod)[,1])
+x <- 1:26
+time <- 1991:2016
+
+mus_pred <- data.frame(pred = m*x + b,
+                   Time = time)
+
+#----------------------------------------------------------------------------------------------------
+
+#Has the prevalence of the rice rat changed through time?
+oryzomys_palustris <- lme_test %>% filter(Species == "Oryzomys palustris (rice rat)") %>% 
+  ungroup() %>% 
+  mutate(Year, Year = plyr::mapvalues(Year, from = c(1991:2006,2008:2016),
+                                      c(1:16,18:26)))
+
+#Build models, specifying AR1 error strucure and SITE as a random effect
+palus_mod <- lme(n ~ Year, ~1|SITE, data = oryzomys_palustris, correlation = corAR1())
+palus_null <- lme(n ~ 1, ~1|SITE, data = oryzomys_palustris, correlation = corAR1())
+
+#Is the model considering time as a fixed effect any better than the null model?
+# anova(update(palus_mod, method = "ML"),
+#       update(palus_null, method = "ML"))
+
+m <- mean(coef(palus_mod)[,2])
+b <- mean(coef(palus_mod)[,1])
+x <- 1:26
+time <- 1991:2016
+
+# all <- intervals(palus_mod)[1]
+# upper <- all$fixed[1,]
+
+palus_pred <- data.frame(pred = m*x + b,
+                   Time = time)
+
+```
+
+### Visualization
+
+```{r sm_visualization, warning=FALSE, message=FALSE, echo = F, fig.width = 8}
+
+ggplot(all_obs) + 
+  geom_point(aes(x = Year, y = mean, color = Species)) +
+  geom_errorbar(aes(x = Year, ymin = lower, ymax = upper, color = Species), alpha = 0.35) +
+  geom_line(aes(x = Year, y = mean, color = Species)) +
+  geom_line(data = mus_pred, aes(x = Time, y = pred)) +
+  geom_line(data = palus_pred, aes(x = Time,  y = pred)) +
+  ylab("Species Abundance") +
+  theme_bw()
+
 
 ```
 
