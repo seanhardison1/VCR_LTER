@@ -30,7 +30,7 @@ crs <- "+init=epsg:4326"
 data.dir <- here::here("data")
 ```
 
-##Introduction
+## Introduction
 
 The purpose of this document is to familiarize myself with the types of data being collected as part of the [Virginia Coast Reserve Long-Term Ecological Research](https://www.vcrlter.virginia.edu/) program. 
 
