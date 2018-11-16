@@ -116,7 +116,7 @@ all_obs <- d %>% mutate(Year = year(Time)) %>%
   mutate(lower = mean - SE,
          upper = mean + SE)
 
-#For a linear-mixed effects model
+#For a linear-mixed effects model. The random effect here is SITE, which we assume to be a representative subset of the population. This is a repeated measures design. 
 lme_test <-  d %>% mutate(Year = year(Time)) %>%
   dplyr::select(SPECIES, Year, SITE) %>%
   group_by(SPECIES, Year, SITE) %>% 
@@ -132,13 +132,18 @@ mus_musculus <- lme_test %>% filter(Species == "Mus musculus (house mouse)") %>%
   mutate(Year, Year = plyr::mapvalues(Year, from = c(1991:2006,2008:2016),
                                       c(1:16,18:26)))
 
-#Build models, specifying AR1 error strucure and SITE as a random effect
-mus_mod <- lme(n ~ Year, ~1|SITE, data = mus_musculus, correlation = corAR1())
+#Does an AR1 error structure give the model a better fit?
+mus_ar1 <- lme(n ~ Year, random= ~1|SITE, data = mus_musculus, correlation = corAR1())
+mus_null <- lme(n ~ Year, ~1|SITE, data = mus_musculus)
+
+#It's slightly better, but not by much (p < 0.05). Observations are correlated with previous year
+# anova(update(mus_ar1, method = "ML"),
+#       update(mus_null, method = "ML"))
+
+#Is the model with Year specified as a fixed effect better than the null model?
+mus_mod <- lme(n ~ Year, random= ~1|SITE, data = mus_musculus, correlation = corAR1())
 mus_null <- lme(n ~ 1, ~1|SITE, data = mus_musculus, correlation = corAR1())
 
-#Is the model considering time as a fixed effect any better than the null model? Yes (p ~ 1e-4)
-# anova(update(mus_mod, method = "ML"),
-#       update(mus_null, method = "ML"))
 
 m <- mean(coef(mus_mod)[,2])
 b <- mean(coef(mus_mod)[,1])
@@ -248,8 +253,7 @@ ggplot(all_obs) +
 sdens <- read.csv(file.path(data.dir,"ShootDens_2007-2017.csv"))
 
 #Across all sites
-shoots <- sdens %>% group_by(PLOT, SAMPYR) %>%
-  dplyr::summarise(mean_dens = mean(SHOOTS)) %>%
+shoots <- sdens %>%
   mutate(Location = ifelse(str_detect(PLOT, "HI"),
                        "Hog Island", ifelse(str_detect(PLOT, "SB"),
                                     "South Bay", "other"))) %>% 
@@ -257,13 +261,18 @@ shoots <- sdens %>% group_by(PLOT, SAMPYR) %>%
 
 #Annual density at grouped sampling sites
 annual_by_group <- shoots %>% group_by(Location, SAMPYR) %>%
-  dplyr::summarise(mean_dens = mean(mean_dens)) %>%
+  dplyr::summarise(dens = mean(SHOOTS),
+                   SD = sd(SHOOTS, na.rm = T)) %>%
+  mutate(lower = dens - SD, upper = dens + SD) %>% 
   as.data.frame()
 
 #Area averaged
 annual_sdens <- shoots %>% group_by(SAMPYR) %>%
-  dplyr::summarise(mean_dens = mean(mean_dens)) %>% 
-  dplyr::mutate(Location = "Area averaged")
+  dplyr::summarise(dens = mean(SHOOTS),
+                   SD = sd(SHOOTS, na.rm = T)) %>%
+  mutate(lower = dens - SD, upper = dens + SD) %>% 
+  dplyr::mutate(Location = "Area averaged") %>% 
+  as.data.frame()
 
 #Bind all
 annual_by_group <- rbind(annual_by_group,annual_sdens) %>% 
@@ -280,12 +289,12 @@ pal <- setNames(c('purple', 'orange'), levels(shoots$Location))
 
 
 one <- ggplot() +
-  geom_line(data = shoots, aes(x = SAMPYR, y = mean_dens, group = PLOT, color = Location)) +
-  geom_point(data = shoots, aes(x = SAMPYR, y = mean_dens, group = PLOT, color = Location)) +
+  geom_line(data = shoots, aes(x = SAMPYR, y = SHOOTS, group = PLOT, color = Location)) +
+  geom_point(data = shoots, aes(x = SAMPYR, y = SHOOTS, group = PLOT, color = Location)) +
   scale_x_discrete(limits = seq(2008,2017,1))+
   scale_color_manual(values = pal)+
   ylim(0,725)+
-  ylab("Mean Shoot Density") +
+  ylab("Shoot Density") +
   xlab("Year") +
   theme_bw() +
   ggtitle("All sites") +
@@ -294,8 +303,9 @@ one <- ggplot() +
 pal <- setNames(c('purple', 'orange', 'indianred'), levels(annual_by_group$Location))
 
 two <- ggplot(annual_by_group) +
-  geom_line(aes(x = SAMPYR, y = mean_dens,  color = Location), size = 1) +
-  geom_point(aes(x = SAMPYR, y = mean_dens, color = Location),size =1) +
+  geom_line(aes(x = SAMPYR, y = dens,  color = Location), size = 1) +
+  geom_point(aes(x = SAMPYR, y = dens, color = Location),size =1) +
+  geom_errorbar(aes(x = SAMPYR, ymin =pmax(lower,0), ymax = upper, color = Location))+
   scale_x_discrete(limits = seq(2008,2017,1))+
   scale_color_manual(values = pal)+
   ylab("") +
@@ -304,7 +314,7 @@ two <- ggplot(annual_by_group) +
   theme_bw() +
   ggtitle("Area averaged") +
   theme(legend.position = c(0.85, 0.8),legend.key = element_rect(color="transparent"),
-        legend.background = element_rect(fill="transparent")) 
+        legend.background = element_rect(fill="transparent"))
 
 #------------------------------------------------------------------------------------
 cowplot::plot_grid(one,two, align = "hv", nrow = 1)
