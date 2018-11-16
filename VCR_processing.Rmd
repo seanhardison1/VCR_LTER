@@ -111,7 +111,7 @@ all_obs <- d %>% mutate(Year = year(Time)) %>%
   dplyr::summarise(n = n()) %>% #count incidence of species
   dplyr::rename(Species = SPECIES) %>%
   dplyr::summarise(mean = mean(n),
-                   SE = sd(n)/sqrt(length(unique(SITE))),
+                   SE = sd(n),
                    sum = sum(n)) %>% 
   mutate(lower = mean - SE,
          upper = mean + SE)
@@ -144,14 +144,11 @@ mus_null <- lme(n ~ Year, ~1|SITE, data = mus_musculus)
 mus_mod <- lme(n ~ Year, random= ~1|SITE, data = mus_musculus, correlation = corAR1())
 mus_null <- lme(n ~ 1, ~1|SITE, data = mus_musculus, correlation = corAR1())
 
-
-m <- mean(coef(mus_mod)[,2])
-b <- mean(coef(mus_mod)[,1])
-x <- 1:26
-time <- 1991:2016
-
-mus_pred <- data.frame(pred = m*x + b,
-                   Time = time)
+#Line fit
+Time2 <- 1:26
+mus_pred <- predict(mus_mod, level = 0, list(Year = Time2)) #m*x + b, averaged slope across levels of SITE
+mus_pred <- data.frame(pred = mus_pred,
+                   Time = 1991:2016)
 
 #----------------------------------------------------------------------------------------------------
 
@@ -169,26 +166,21 @@ palus_null <- lme(n ~ 1, ~1|SITE, data = oryzomys_palustris, correlation = corAR
 # anova(update(palus_mod, method = "ML"),
 #       update(palus_null, method = "ML"))
 
-m <- mean(coef(palus_mod)[,2])
-b <- mean(coef(palus_mod)[,1])
-x <- 1:26
-time <- 1991:2016
-
-# all <- intervals(palus_mod)[1]
-# upper <- all$fixed[1,]
-
-palus_pred <- data.frame(pred = m*x + b,
-                   Time = time)
+#Line fit
+palus_pred <- predict(palus_mod, level = 0, list(Year = Time2)) 
+palus_pred <- data.frame(pred = palus_pred,
+                   Time = 1991:2016)
 
 ```
 
 ### Visualization
 
-```{r sm_visualization, warning=FALSE, message=FALSE, echo = F, fig.width = 8}
+
+```{r sm_visualization, warning=FALSE, message=FALSE, echo = F, fig.width = 8, fig.cap="Mean abundance of unique house mice, rice rats, and Norway rats across sampling sites and through time. Regression line Shaded region shows +/- 1 SD."}
 
 ggplot(all_obs) + 
   geom_point(aes(x = Year, y = mean, color = Species)) +
-  geom_errorbar(aes(x = Year, ymin = lower, ymax = upper, color = Species), alpha = 0.35) +
+  geom_ribbon(aes(x = Year, ymin = pmax(lower,0), ymax = upper,  fill = Species), alpha = 0.15) +
   geom_line(aes(x = Year, y = mean, color = Species)) +
   geom_line(data = mus_pred, aes(x = Time, y = pred), color = "indianred") +
   geom_line(data = palus_pred, aes(x = Time,  y = pred), color = "darkgreen") +
@@ -300,19 +292,20 @@ one <- ggplot() +
   ggtitle("All sites") +
   guides(colour=FALSE)
 
-pal <- setNames(c('purple', 'orange', 'indianred'), levels(annual_by_group$Location))
+pal <- setNames(c('purple', 'orange', 'black'), levels(annual_by_group$Location))
 
 two <- ggplot(annual_by_group) +
   geom_line(aes(x = SAMPYR, y = dens,  color = Location), size = 1) +
   geom_point(aes(x = SAMPYR, y = dens, color = Location),size =1) +
-  geom_errorbar(aes(x = SAMPYR, ymin =pmax(lower,0), ymax = upper, color = Location))+
+  geom_ribbon(aes(x = SAMPYR, ymin =pmax(lower,0), ymax = upper, fill = Location), alpha = 0.15)+
   scale_x_discrete(limits = seq(2008,2017,1))+
   scale_color_manual(values = pal)+
+  scale_fill_manual(values = pal)+
   ylab("") +
   ylim(0,725)+
   xlab("Year") +
   theme_bw() +
-  ggtitle("Area averaged") +
+  ggtitle("Site averages") +
   theme(legend.position = c(0.85, 0.8),legend.key = element_rect(color="transparent"),
         legend.background = element_rect(fill="transparent"))
 
@@ -341,22 +334,26 @@ cowplot::plot_grid(one,two, align = "hv", nrow = 1)
 bchl <- read.csv(file.path(data.dir,"BenthChl_2007-2017.csv"))
 
 #Across all sites
-chl <- bchl %>% group_by(PLOT, SAMPYR) %>%
-  dplyr::summarise(mean_chl = mean(BEN_CHL)) %>%
+chl <- bchl  %>%
   mutate(Location = ifelse(str_detect(PLOT, "HI"),
-                      "Hog Island", ifelse(str_detect(PLOT, "SB"),
+                       "Hog Island", ifelse(str_detect(PLOT, "SB"),
                                     "South Bay", "other"))) %>% 
   mutate(Location = factor(Location, levels = c("Hog Island","South Bay")))
 
 #Annual chl at grouped sampling sites
 annual_by_group <- chl %>% group_by(Location, SAMPYR) %>%
-  dplyr::summarise(mean_chl = mean(mean_chl)) %>%
+  dplyr::summarise(chl = mean(BEN_CHL),
+                   SD = sd(BEN_CHL, na.rm = T)) %>%
+  mutate(lower = chl - SD, upper = chl + SD) %>% 
   as.data.frame()
 
 #Area averaged
 annual_chl <- chl %>% group_by(SAMPYR) %>%
-  dplyr::summarise(mean_chl = mean(mean_chl)) %>% 
-  dplyr::mutate(Location = "Area averaged")
+  dplyr::summarise(chl = mean(BEN_CHL),
+                   SD = sd(BEN_CHL, na.rm = T)) %>%
+  mutate(lower = chl - SD, upper = chl + SD) %>% 
+  dplyr::mutate(Location = "Area averaged") %>% 
+  as.data.frame()
 
 #Bind all
 annual_by_group <- rbind(annual_by_group,annual_chl) %>% 
@@ -371,29 +368,31 @@ annual_by_group <- rbind(annual_by_group,annual_chl) %>%
 pal <- setNames(c('purple', 'orange'), levels(shoots$Location))
 
 one <- ggplot() +
-  geom_line(data = chl, aes(x = SAMPYR, y = mean_chl, group = PLOT, color = Location)) +
-  geom_point(data = chl, aes(x = SAMPYR, y = mean_chl, group = PLOT, color = Location)) +
+  geom_line(data = chl, aes(x = SAMPYR, y = BEN_CHL, group = PLOT, color = Location)) +
+  geom_point(data = chl, aes(x = SAMPYR, y = BEN_CHL, group = PLOT, color = Location)) +
   scale_x_discrete(limits = seq(2008,2017,1))+
   scale_color_manual(values = pal)+
-  ylab("Mean Benthic Chlorophyll") +
+  ylab("Benthic Chlorophyll") +
   xlab("Year") +
   theme_bw() +
   ggtitle("All sites") +
   guides(fill=FALSE, color=FALSE)
 
-pal <- setNames(c('purple', 'orange', 'indianred'), levels(annual_by_group$Location))
+pal <- setNames(c('purple', 'orange', 'black'), levels(annual_by_group$Location))
 two <- ggplot(annual_by_group) +
-  geom_line(aes(x = SAMPYR, y = mean_chl,  color = Location),size =1) +
-  geom_point(aes(x = SAMPYR, y = mean_chl, color = Location),size =1) +
+  geom_line(aes(x = SAMPYR, y = chl,  color = Location),size =1) +
+  geom_point(aes(x = SAMPYR, y = chl, color = Location),size =1) +
+  geom_ribbon(aes(x = SAMPYR, ymin =pmax(lower,0), ymax = upper, fill = Location), alpha = 0.15)+
   scale_x_discrete(limits = seq(2008,2017,1))+
   scale_color_manual(values = pal)+
+  scale_fill_manual(values = pal)+
   ylab("") +
   xlab("Year") +
   theme_bw() +
-  ggtitle("Area averaged") +
+  ggtitle("Site averages") +
   theme(legend.position = c(0.75, 0.8),legend.key = element_rect(color="transparent"),
         legend.background = element_rect(fill="transparent"))
-
+two
 #------------------------------------------------------------------------------------
 cowplot::plot_grid(one,two, align = "h", nrow = 1)
 ```
@@ -540,6 +539,8 @@ gridExtra::grid.arrange(one, two, three, four, five, six, seven, eight, legend, 
 ```{r water_quality}
 load(file = file.path(data.dir, "IntegratedWaterQual_1992-2018.Rdata"))
 
+missing_years <- data.frame(Year = 1992:2017)
+
 d <- wq %>%
   dplyr::select(station, measureDate,chlor_a, tss, nh3, po4, nox, no2, din, pom) %>%
   mutate(Time = mdy(measureDate)) %>% 
@@ -552,7 +553,9 @@ d <- wq %>%
                    PO4 = mean(po4, na.rm = T),
                    NOX = mean(nox, na.rm = T),
                    DIN = mean(din, na.rm = T)) %>% 
+  full_join(missing_years,., by = "Year") %>% #bind in missing years
   tidyr::gather(., Var, Value, Chlorophyll:DIN) %>% 
+  
   mutate(interp = NA)
 
 #Interpolate missing values if reasonable to do so
@@ -562,7 +565,7 @@ for (i in 1:length(unique(d$Var))){
   sub <- d[d$Var == unique(d$Var)[i],] #subset
   missing <- which(is.na(sub$Value)) #Get index of missing values
 
-  if (1 - nrow(sub[is.na(sub$Value),])/nrow(sub) > .9){  #If 90% of observations are present, then interpolate
+  if (1 - nrow(sub[is.na(sub$Value),])/nrow(sub) > .8){  #If 80% of observations are present, then interpolate
     sub$Value <- approx(sub$Year, sub$Value, n  = nrow(sub))$y
   }
   
