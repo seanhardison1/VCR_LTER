@@ -102,7 +102,7 @@ d <- read.csv(file.path(data.dir, "SmallMammalTrapping.csv"), stringsAsFactors =
   filter(TRAPDAY <= 3, SITE != "T2 ") #All sites had at least 3 trap days, so this is the minimum. Sampling at site T2 is not consistent with other sites, so is excluded here
 
 
-#Question: Have Autumn species abundances changed through time?
+#Question: Have fall species abundances changed through time? 
 
 #For plotting
 all_obs <- d %>% mutate(Year = year(Time)) %>%
@@ -176,7 +176,7 @@ palus_pred <- data.frame(pred = palus_pred,
 ### Visualization
 
 
-```{r sm_visualization, warning=FALSE, message=FALSE, echo = F, fig.width = 8, fig.cap="Mean abundance of unique house mice, rice rats, and Norway rats across sampling sites and through time. Regression line Shaded region shows +/- 1 SD."}
+```{r sm_visualization, warning=FALSE, message=FALSE, echo = F, fig.width = 8, fig.cap="Mean abundance of unique house mice, rice rats, and Norway rats across sampling sites and through time at Hog Island, VA. Lines show linear mixed-effects model fits, and shaded regions show +/- 1 sample SD."}
 
 ggplot(all_obs) + 
   geom_point(aes(x = Year, y = mean, color = Species)) +
@@ -275,7 +275,7 @@ annual_by_group <- rbind(annual_by_group,annual_sdens) %>%
 
 ### Visualization
 
-```{r shoots_plotting, echo = FALSE,fig.width=10, fig.height=4}
+```{r shoots_plotting, echo = FALSE,fig.width=10, fig.height=4, fig.cap = "Figures show shoot densities through time at sites at South Bay, VA (orange) and Hog Island, VA (purple). Shaded regions show +/- 1 sample SD."}
 
 pal <- setNames(c('purple', 'orange'), levels(shoots$Location))
 
@@ -286,13 +286,13 @@ one <- ggplot() +
   scale_x_discrete(limits = seq(2008,2017,1))+
   scale_color_manual(values = pal)+
   ylim(0,725)+
-  ylab("Shoot Density") +
+  ylab(expression("Shoot Density (n m"^-2*")"))+
   xlab("Year") +
   theme_bw() +
   ggtitle("All sites") +
   guides(colour=FALSE)
 
-pal <- setNames(c('purple', 'orange', 'black'), levels(annual_by_group$Location))
+pal <- setNames(c('purple', 'orange', '#1b9e77'), levels(annual_by_group$Location))
 
 two <- ggplot(annual_by_group) +
   geom_line(aes(x = SAMPYR, y = dens,  color = Location), size = 1) +
@@ -363,7 +363,7 @@ annual_by_group <- rbind(annual_by_group,annual_chl) %>%
 
 ### Visualization
 
-```{r bchl_plotting, echo = F, fig.width=10, fig.height=4}
+```{r bchl_plotting, echo = F, fig.width=10, fig.height=4,fig.cap = "Figures show benthic chlorophyll in restored seagrass sediments through time at sites at South Bay, VA (orange) and Hog Island, VA (purple). Shaded regions show +/- 1 sample SD. Note the change in y-axis scale between plots."}
 
 pal <- setNames(c('purple', 'orange'), levels(shoots$Location))
 
@@ -372,13 +372,13 @@ one <- ggplot() +
   geom_point(data = chl, aes(x = SAMPYR, y = BEN_CHL, group = PLOT, color = Location)) +
   scale_x_discrete(limits = seq(2008,2017,1))+
   scale_color_manual(values = pal)+
-  ylab("Benthic Chlorophyll") +
+  ylab(expression("Benthic Chlorophyll (mg m"^-2*")")) +
   xlab("Year") +
   theme_bw() +
   ggtitle("All sites") +
   guides(fill=FALSE, color=FALSE)
 
-pal <- setNames(c('purple', 'orange', 'black'), levels(annual_by_group$Location))
+pal <- setNames(c('purple', 'orange', '#1b9e77'), levels(annual_by_group$Location))
 two <- ggplot(annual_by_group) +
   geom_line(aes(x = SAMPYR, y = chl,  color = Location),size =1) +
   geom_point(aes(x = SAMPYR, y = chl, color = Location),size =1) +
@@ -392,7 +392,7 @@ two <- ggplot(annual_by_group) +
   ggtitle("Site averages") +
   theme(legend.position = c(0.75, 0.8),legend.key = element_rect(color="transparent"),
         legend.background = element_rect(fill="transparent"))
-two
+
 #------------------------------------------------------------------------------------
 cowplot::plot_grid(one,two, align = "h", nrow = 1)
 ```
@@ -421,7 +421,7 @@ stations <-data.frame(ID = c("HOGMET","OYSMET","OYSMET0","PHCKMET"),
 kable(stations, format = "markdown", align = c("c","c"))
 ```
 
-The time series figures below were produced by averaging site data across years. 
+Time series figures below were produced by averaging site data across years. It would appear that there are discrepancies between sites listed in metadata and sites in the data set.
 
 ### Processing
 
@@ -532,7 +532,7 @@ gridExtra::grid.arrange(one, two, three, four, five, six, seven, eight, legend, 
 
 **Contacts**: jhp7e@virginia.edu
 
-**Notes**: An interpolation step was performed when missing values comprised < 10% of the length of the series. Interpolated values are shown in red in the figures below. 
+**Notes**: A linear interpolation step was performed when missing values comprised < 20% of the length of the series. Interpolated values are shown in red in the figures below. 
 
 ### Processing
 
@@ -558,7 +558,7 @@ d <- wq %>%
   
   mutate(interp = NA)
 
-#Interpolate missing values if reasonable to do so
+#Interpolate missing values if reasonable (20% missing is probably a stretch) to do so
 dna <- NULL
 for (i in 1:length(unique(d$Var))){
   
